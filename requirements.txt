@@ -1,8 +1,6 @@
 mediapipe==0.8.10
 numpy==1.21.0
-opencv-python==4.5.2.54
+opencv-python-headless==4.5.2.54
 streamlit==1.15.0
-opencv-python-headless
-streamlit
 mesa
 libgl1-mesa-glx
