@@ -5,3 +5,4 @@ streamlit==1.15.0
 opencv-python-headless
 streamlit
 mesa
+libgl1-mesa-glx
