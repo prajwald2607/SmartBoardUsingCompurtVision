@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hand Tracking Paint App</title>
+    <style>
+        body {
+            background-color: #f0f0f0;
+            font-family: 'Arial', sans-serif;
+            text-align: center;
+            margin: 20px;
+            background: linear-gradient(to bottom right, #4e54c8, #8fb1fb);
+            height: 100vh;
+        }
+
+        h1 {
+            color: #333;
+        }
+
+        img {
+            border: 5px solid #ccc;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        button {
+            background-color: #4caf50;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+
+        button:hover {
+            background-color: #45a049;
+        }
+    </style>
+</head>
+<body>
+    <h1>Hand Tracking Paint App</h1>
+    <img id="videoFeed" src="{{ url_for('video_feed') }}" width="900" height="600">
+    <br>
+    <button onclick="saveDrawing()">Save Drawing</button>
+
+    <script>
+        function saveDrawing() {
+            const videoFeed = document.getElementById('videoFeed');
+            const canvas = document.createElement('canvas');
+            canvas.width = videoFeed.width;
+            canvas.height = videoFeed.height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(videoFeed, 0, 0, canvas.width, canvas.height);
+
+            const dataURL = canvas.toDataURL();
+            const link = document.createElement('a');
+            link.download = 'drawing.png';
+            link.href = dataURL;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+    </script>
+</body>
+</html>
