@@ -1,42 +1,181 @@
-import streamlit as st
+from flask import Flask, render_template, Response
 import cv2
-import mediapipe as mp
 import numpy as np
+import mediapipe as mp
+import time
 
-def main():
-    st.title("Hand Tracking Paint App")
+app = Flask(__name__, template_folder='templates')
 
-    # Create a canvas
-    canvas = st.empty()
-    canvas_width, canvas_height = 640, 480
-    canvas_image = np.zeros((canvas_height, canvas_width, 3), dtype=np.uint8)
+ml = 150
+max_x, max_y = 250 + ml, 50
+curr_tool = "select tool"
+time_init = True
+rad = 40.
 
-    # Initialize hand tracking
-    mp_hands = mp.solutions.hands
-    hands = mp_hands.Hands()
+var_inits = False
+thick = 4
+prevx, prevy = 0, 0
+
+def getTool(x):
+    if x < 50 + ml:
+        return "line"
+    elif x < 100 + ml:
+        return "rectangle"
+    elif x < 150 + ml:
+        return "draw"
+    elif x < 200 + ml:
+        return "circle"
+    else:
+        return "erase"
+
+def index_raised(yi, y9):
+    if (y9 - yi) > 40:
+        return True
+    return False
+
+hands = mp.solutions.hands
+hand_landmark = hands.Hands(min_detection_confidence=0.6, min_tracking_confidence=0.6, max_num_hands=1)
+draw = mp.solutions.drawing_utils
+
+tools = cv2.imread("drawing.png")
+tools = tools.astype('uint8')
+
+mask = np.ones((480, 640)) * 255
+mask = mask.astype('uint8')
+
+cap = cv2.VideoCapture(0)
+
+def generate():
+    global curr_tool, time_init, rad, var_inits, thick, prevx, prevy
 
     while True:
-        # Get webcam frame
-        _, frame = st.beta_read_all()
+        _, frm = cap.read()
+        frm = cv2.flip(frm, 1)
 
-        # Flip the frame horizontally for a later selfie-view display
-        frame = cv2.flip(frame, 1)
+        rgb = cv2.cvtColor(frm, cv2.COLOR_BGR2RGB)
+        op = hand_landmark.process(rgb)
 
-        # Convert BGR image to RGB
-        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        if op.multi_hand_landmarks:
+            for i in op.multi_hand_landmarks:
+                draw.draw_landmarks(frm, i, hands.HAND_CONNECTIONS)
+                x, y = int(i.landmark[8].x * 640), int(i.landmark[8].y * 480)
 
-        # Process the frame and get hand landmarks
-        results = hands.process(rgb_frame)
+                if x < max_x and y < max_y and x > ml:
+                    if time_init:
+                        ctime = time.time()
+                        time_init = False
+                    ptime = time.time()
 
-        # Draw hand landmarks on the canvas
-        if results.multi_hand_landmarks:
-            for hand_landmarks in results.multi_hand_landmarks:
-                for landmark in hand_landmarks.landmark:
-                    x, y = int(landmark.x * canvas_width), int(landmark.y * canvas_height)
-                    cv2.circle(canvas_image, (x, y), 10, (255, 0, 0), -1)
+                    cv2.circle(frm, (x, y), rad, (0, 255, 255), 2)
+                    rad -= 1
 
-        # Display the canvas image
-        canvas.image(canvas_image, channels="BGR", use_column_width=True)
+                    if (ptime - ctime) > 0.8:
+                        curr_tool = getTool(x)
+                        time_init = True
+                        rad = 40
+                else:
+                    time_init = True
+                    rad = 40
 
-if __name__ == "__main__":
-    main()
+                if curr_tool == "draw":
+                    xi, yi = int(i.landmark[12].x * 640), int(i.landmark[12].y * 480)
+                    y9 = int(i.landmark[9].y * 480)
+
+                    if index_raised(yi, y9):
+                        cv2.line(mask, (prevx, prevy), (x, y), 0, thick)
+                        prevx, prevy = x, y
+                    else:
+                        prevx = x
+                        prevy = y
+
+                elif curr_tool == "line":
+                    xi, yi = int(i.landmark[12].x * 640), int(i.landmark[12].y * 480)
+                    y9 = int(i.landmark[9].y * 480)
+
+                    if index_raised(yi, y9):
+                        if not (var_inits):
+                            xii, yii = x, y
+                            var_inits = True
+
+                        cv2.line(frm, (xii, yii), (x, y), (50, 152, 255), thick)
+
+                    else:
+                        if var_inits:
+                            cv2.line(mask, (xii, yii), (x, y), 0, thick)
+                            var_inits = False
+
+                elif curr_tool == "rectangle":
+                    xi, yi = int(i.landmark[12].x * 640), int(i.landmark[12].y * 480)
+                    y9 = int(i.landmark[9].y * 480)
+
+                    if index_raised(yi, y9):
+                        if not (var_inits):
+                            xii, yii = x, y
+                            var_inits = True
+
+                        cv2.rectangle(frm, (xii, yii), (x, y), (0, 255, 255), thick)
+
+                    else:
+                        if var_inits:
+                            cv2.rectangle(mask, (xii, yii), (x, y), 0, thick)
+                            var_inits = False
+
+
+                elif curr_tool == "circle":
+
+                    xi, yi = int(i.landmark[12].x * 640), int(i.landmark[12].y * 480)
+
+                    y9 = int(i.landmark[9].y * 480)
+
+                    if index_raised(yi, y9):
+
+                        if not var_inits:
+                            xii, yii = x, y
+
+                            var_inits = True
+
+                        radius = int(((xii - x) * 2 + (yii - y) * 2) ** 0.5)
+
+                        cv2.circle(frm, (xii, yii), radius, (255, 255, 0), thick)
+
+
+                    else:
+
+                        if var_inits:
+                            radius = int(((xii - x) * 2 + (yii - y) * 2) ** 0.5)
+
+                            cv2.circle(mask, (xii, yii), radius, (0, 255, 0), thick)
+
+                            var_inits = False
+
+
+                elif curr_tool == "erase":
+                    xi, yi = int(i.landmark[12].x * 640), int(i.landmark[12].y * 480)
+                    y9 = int(i.landmark[9].y * 480)
+
+                    if index_raised(yi, y9):
+                        cv2.circle(frm, (x, y), 30, (0, 0, 0), -1)
+                        cv2.circle(mask, (x, y), 30, 255, -1)
+
+        op = cv2.bitwise_and(frm, frm, mask=mask)
+        frm[:, :, 1] = op[:, :, 1]
+        frm[:, :, 2] = op[:, :, 2]
+
+        frm[:max_y, ml:max_x] = cv2.addWeighted(tools, 0.7, frm[:max_y, ml:max_x], 0.3, 0)
+
+        cv2.putText(frm, curr_tool, (270 + ml, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+
+        _, jpeg = cv2.imencode('.jpg', frm)
+        frame = jpeg.tobytes()
+        yield (b'--frame\r\n'b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n\r\n')
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+@app.route('/video_feed')
+def video_feed():
+    return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame')
+
+if __name__ == '__main__':
+    app.run(debug=True)
